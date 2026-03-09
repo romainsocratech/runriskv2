@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RUN Risk Diagnostic</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Mono:wght@400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0c0f; --surface: #12161c; --surface2: #1a2030; --border: #1e2a3a;
+    --accent: #e8f04a; --accent2: #4af0c8; --danger: #f04a4a; --warn: #f0a84a;
+    --text: #e8edf5; --muted: #6b7f9a; --radius: 4px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Mono', monospace; min-height: 100vh; overflow-x: hidden; }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image: linear-gradient(rgba(232,240,74,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(232,240,74,0.03) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none; z-index: 0;
+  }
+  .container { position: relative; z-index: 1; max-width: 820px; margin: 0 auto; padding: 48px 24px 80px; }
+
+  .header { margin-bottom: 56px; }
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(232,240,74,0.08); border: 1px solid rgba(232,240,74,0.2);
+    color: var(--accent); font-size: 11px; font-weight: 500; letter-spacing: 0.12em;
+    text-transform: uppercase; padding: 6px 14px; border-radius: 2px; margin-bottom: 24px;
+  }
+  .badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  h1 { font-family: 'DM Serif Display',serif; font-size: clamp(40px,7vw,68px); line-height:1; letter-spacing:-0.02em; color:var(--text); margin-bottom:4px; }
+  h1 em { font-style:italic; color:var(--accent); }
+  .subtitle { font-size:13px; color:var(--muted); margin-top:16px; letter-spacing:0.02em; line-height:1.6; }
+
+  .progress-bar-wrap { margin-bottom:48px; display:flex; align-items:center; gap:16px; }
+  .progress-track { flex:1; height:2px; background:var(--border); overflow:hidden; }
+  .progress-fill { height:100%; background:var(--accent); transition:width 0.5s cubic-bezier(0.4,0,0.2,1); box-shadow:0 0 12px var(--accent); }
+  .progress-label { font-size:11px; color:var(--muted); white-space:nowrap; letter-spacing:0.08em; min-width:60px; text-align:right; }
+
+  .question-card {
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:40px; margin-bottom:24px; position:relative;
+    animation:slideIn 0.35s cubic-bezier(0.4,0,0.2,1);
+  }
+  @keyframes slideIn { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+  .question-card::before { content:''; position:absolute; top:0;left:0; width:3px;height:100%; background:var(--accent); border-radius:var(--radius) 0 0 var(--radius); }
+  .axe-tag { font-size:10px; font-weight:500; letter-spacing:0.15em; text-transform:uppercase; color:var(--accent); margin-bottom:16px; display:flex; align-items:center; gap:8px; }
+  .axe-tag::after { content:''; flex:1; height:1px; background:var(--border); max-width:200px; }
+  .question-num { font-family:'DM Serif Display',serif; font-size:13px; color:var(--muted); margin-bottom:10px; }
+  .question-text { font-family:'Syne',sans-serif; font-size:20px; font-weight:600; line-height:1.4; color:var(--text); margin-bottom:32px; }
+
+  .options { display:flex; flex-direction:column; gap:10px; }
+  .option {
+    display:flex; align-items:center; gap:16px; padding:14px 20px;
+    border:1px solid var(--border); border-radius:var(--radius); cursor:pointer;
+    transition:all 0.18s ease; background:transparent; color:var(--text);
+    text-align:left; font-family:'DM Mono',monospace; font-size:13px;
+  }
+  .option:hover { border-color:var(--accent); background:rgba(232,240,74,0.04); }
+  .option.selected { border-color:var(--accent); background:rgba(232,240,74,0.08); color:var(--accent); }
+  .option.selected .score-dot { background:var(--accent); box-shadow:0 0 10px var(--accent); }
+  .score-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; border:1px solid var(--muted); transition:all 0.2s; }
+  .score-dot.d0   { border-color:var(--danger); }
+  .score-dot.d25  { border-color:var(--warn); }
+  .score-dot.d50  { border-color:#f0d44a; }
+  .score-dot.d75  { border-color:var(--accent2); }
+  .score-dot.d100 { border-color:var(--accent); }
+  .option-label { flex:1; line-height:1.4; }
+  .score-badge { font-size:10px; color:var(--muted); letter-spacing:0.06em; padding:2px 8px; border:1px solid var(--border); border-radius:2px; flex-shrink:0; font-weight:500; }
+
+  .nav { display:flex; justify-content:space-between; align-items:center; margin-top:32px; gap:12px; }
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:12px 28px; border-radius:var(--radius); font-family:'DM Mono',monospace; font-size:13px; font-weight:500; letter-spacing:0.06em; cursor:pointer; transition:all 0.18s ease; border:none; }
+  .btn-ghost { background:transparent; border:1px solid var(--border); color:var(--muted); }
+  .btn-ghost:hover { border-color:var(--muted); color:var(--text); }
+  .btn-primary { background:var(--accent); color:#0a0c0f; font-weight:700; }
+  .btn-primary:hover { background:#f0fc50; box-shadow:0 0 24px rgba(232,240,74,0.4); }
+  .btn-primary:disabled { opacity:0.3; cursor:not-allowed; box-shadow:none; }
+
+  .results { animation:slideIn 0.5s cubic-bezier(0.4,0,0.2,1); }
+  .score-hero { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:48px 40px; text-align:center; margin-bottom:32px; position:relative; overflow:hidden; }
+  .score-hero::before { content:''; position:absolute; top:-60px;left:50%;transform:translateX(-50%); width:300px;height:300px;border-radius:50%; background:radial-gradient(circle,rgba(232,240,74,0.08) 0%,transparent 70%); pointer-events:none; }
+  .score-label { font-size:11px; letter-spacing:0.15em; text-transform:uppercase; color:var(--muted); margin-bottom:16px; }
+  .score-number { font-family:'DM Serif Display',serif; font-size:clamp(80px,15vw,120px); line-height:1; color:var(--accent); text-shadow:0 0 60px rgba(232,240,74,0.3); }
+  .score-number .denom { font-size:0.35em; color:var(--muted); vertical-align:super; }
+  .criticality-badge { display:inline-flex; align-items:center; gap:8px; padding:8px 20px; border-radius:2px; font-size:12px; font-weight:600; letter-spacing:0.1em; text-transform:uppercase; margin-top:16px; }
+
+  .radar-section { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:32px 40px; margin-bottom:32px; }
+  .section-title { font-family:'Syne',sans-serif; font-size:13px; font-weight:700; letter-spacing:0.12em; text-transform:uppercase; color:var(--muted); margin-bottom:24px; }
+  .axes-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media(max-width:600px){.axes-grid{grid-template-columns:1fr}}
+  .axe-bar-item { display:flex; flex-direction:column; gap:6px; }
+  .axe-bar-header { display:flex; justify-content:space-between; align-items:baseline; }
+  .axe-name { font-size:11px; color:var(--muted); letter-spacing:0.05em; }
+  .axe-score-val { font-size:12px; font-weight:500; }
+  .bar-track { height:4px; background:var(--border); border-radius:2px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:2px; transition:width 1s cubic-bezier(0.4,0,0.2,1); }
+
+  .weaknesses { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:32px 40px; margin-bottom:32px; }
+  .weakness-item { display:flex; gap:20px; padding:24px 0; border-bottom:1px solid var(--border); }
+  .weakness-item:last-child { border-bottom:none; }
+  .weakness-rank { font-family:'DM Serif Display',serif; font-size:32px; line-height:1; min-width:40px; opacity:0.25; }
+  .weakness-content { flex:1; }
+  .weakness-axe { font-size:11px; letter-spacing:0.1em; text-transform:uppercase; margin-bottom:4px; font-weight:600; }
+  .weakness-score-tag { font-size:11px; color:var(--muted); margin-bottom:14px; }
+  .weakness-reco { font-size:13px; color:var(--text); line-height:1.6; padding-left:16px; position:relative; margin-bottom:10px; }
+  .weakness-reco::before { content:'→'; position:absolute; left:0; color:var(--muted); }
+  .weakness-reco:last-child { margin-bottom:0; }
+  .all-mastered { font-size:13px; color:var(--accent2); padding:16px 0; display:flex; align-items:center; gap:10px; }
+  .weakness-mastered { opacity: 0.5; }
+  .disclaimer { font-size:11px; color:var(--muted); letter-spacing:0.03em; line-height:1.6; margin-top:20px; padding:12px 16px; border-left:2px solid var(--border); opacity:0.75; }
+
+  .results-nav { display:flex; gap:12px; flex-wrap:wrap; }
+  .radar-wrap { display:flex; justify-content:center; margin-bottom:28px; }
+  #radarCanvas { display:block; }
+
+  .intro-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:56px 48px; text-align:center; animation:slideIn 0.4s ease; }
+  .intro-icon { font-size:48px; margin-bottom:24px; display:block; }
+  .intro-title { font-family:'DM Serif Display',serif; font-size:36px; margin-bottom:16px; color:var(--text); }
+  .intro-desc { color:var(--muted); font-size:13px; line-height:1.8; max-width:420px; margin:0 auto 36px; }
+  .specs { display:flex; justify-content:center; gap:32px; margin-bottom:40px; flex-wrap:wrap; }
+  .spec { text-align:center; }
+  .spec-val { font-family:'DM Serif Display',serif; font-size:28px; color:var(--accent); display:block; }
+  .spec-label { font-size:11px; color:var(--muted); letter-spacing:0.08em; text-transform:uppercase; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="badge">Diagnostic Opérationnel</div>
+    <h1>RUN<br/><em>Risk</em></h1>
+    <p class="subtitle">Évaluez la résilience de votre système informatique en 3 minutes.</p>
+  </div>
+  <div id="app"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════════════
+//  QUESTIONS — 12 axes
+// ═══════════════════════════════════════════════════════════════════
+const QUESTIONS = [
+  {
+    axe: "Dépendance humaine",
+    question: "Si une personne clé de votre équipe est absente deux semaines, que se passe-t-il ?",
+    options: [
+      { label: "Aucune difficulté, le reste de l'équipe prend le relais naturellement.", score: 100 },
+      { label: "Quelques ralentissements, mais tout reste gérable.", score: 75 },
+      { label: "Certaines opérations deviennent difficiles à assurer.", score: 50 },
+      { label: "Plusieurs activités critiques sont bloquées.", score: 25 },
+      { label: "Certaines opérations deviennent impossibles sans cette personne.", score: 0 }
+    ]
+  },
+  {
+    axe: "Documentation",
+    question: "Comment est documenté votre système en production ?",
+    options: [
+      { label: "Documentation complète, à jour, accessible et régulièrement relue.", score: 100 },
+      { label: "Documentation existante mais parfois incomplète ou désynchronisée.", score: 75 },
+      { label: "Documentation partielle, uniquement sur certains modules clés.", score: 50 },
+      { label: "Documentation quasi-inexistante ou jamais mise à jour.", score: 25 },
+      { label: "Aucune documentation formelle, tout est dans les têtes.", score: 0 }
+    ]
+  },
+  {
+    axe: "Incidents récurrents",
+    question: "Quelle est la fréquence des incidents récurrents sur vos systèmes ?",
+    options: [
+      { label: "Aucun incident récurrent, post-mortems systématiques et actions correctives.", score: 100 },
+      { label: "Quelques incidents récurrents, traités en amélioration continue.", score: 75 },
+      { label: "Des incidents répétitifs sur certains périmètres identifiés.", score: 50 },
+      { label: "Incidents fréquents sur des composants critiques, peu de résolution durable.", score: 25 },
+      { label: "Des incidents récurrents non résolus depuis longtemps, mode pompier permanent.", score: 0 }
+    ]
+  },
+  {
+    axe: "Monitoring",
+    question: "Quel est le niveau de supervision de vos systèmes en production ?",
+    options: [
+      { label: "Monitoring complet avec alertes, tableaux de bord et astreintes organisées.", score: 100 },
+      { label: "Monitoring en place sur les composants principaux, quelques angles morts.", score: 75 },
+      { label: "Supervision partielle, certains services critiques non monitorés.", score: 50 },
+      { label: "Monitoring minimal ou alertes peu fiables (trop de faux positifs).", score: 25 },
+      { label: "Aucun monitoring, les incidents sont découverts par les utilisateurs.", score: 0 }
+    ]
+  },
+  {
+    axe: "Gestion des changements",
+    question: "Comment sont gérés les changements (MEP, patches, configs) en production ?",
+    options: [
+      { label: "Processus structuré : planning, validation, tests, rollback, communication.", score: 100 },
+      { label: "Processus défini mais appliqué de façon inégale selon les équipes.", score: 75 },
+      { label: "Quelques règles informelles, beaucoup dépend des individus.", score: 50 },
+      { label: "Changements fréquents sans processus clair, incidents liés aux MEP.", score: 25 },
+      { label: "Aucun processus, changements directs en production sans validation.", score: 0 }
+    ]
+  },
+  {
+    axe: "Gouvernance RUN",
+    question: "Comment est organisée la gouvernance de votre RUN au quotidien ?",
+    options: [
+      { label: "Pilotage structuré : réunions régulières, KPIs, responsabilités claires.", score: 100 },
+      { label: "Gouvernance en place mais réunions irrégulières ou indicateurs peu suivis.", score: 75 },
+      { label: "Pilotage informel, gouvernance ad-hoc selon les urgences.", score: 50 },
+      { label: "Peu ou pas de gouvernance RUN dédiée, réactivité uniquement.", score: 25 },
+      { label: "Aucune gouvernance RUN identifiée, pas de pilotage visible.", score: 0 }
+    ]
+  },
+  {
+    axe: "Mises en production",
+    question: "Comment se déroulent vos mises en production ?",
+    options: [
+      { label: "MEP planifiées, environnements de recette/pré-prod, CI/CD, rollback automatisé.", score: 100 },
+      { label: "MEP organisées avec validation, mais processus parfois contournés.", score: 75 },
+      { label: "MEP en heures creuses, sans CI/CD, rollback manuel possible.", score: 50 },
+      { label: "MEP sans environnement de test, fréquemment sources d'incidents.", score: 25 },
+      { label: "MEP directement en prod, sans test préalable ni procédure de retour arrière.", score: 0 }
+    ]
+  },
+  {
+    axe: "Continuité opérationnelle",
+    question: "En cas de panne majeure, quelle est votre capacité de reprise ?",
+    options: [
+      { label: "PCA/PRA formalisé, testé régulièrement, RTO/RPO connus et maîtrisés.", score: 100 },
+      { label: "Plan de continuité existant mais rarement testé en conditions réelles.", score: 75 },
+      { label: "Procédures partielles, capacité de reprise non mesurée précisément.", score: 50 },
+      { label: "Pas de plan formalisé, reprise empirique selon la nature de l'incident.", score: 25 },
+      { label: "Aucun plan, reprise totalement improvisée avec durée d'arrêt imprévisible.", score: 0 }
+    ]
+  },
+  {
+    axe: "Connaissance du système",
+    question: "Quelle est la maîtrise collective de votre architecture et de vos systèmes ?",
+    options: [
+      { label: "Architecture documentée, plusieurs personnes maîtrisent l'ensemble du SI.", score: 100 },
+      { label: "Bonne connaissance globale, quelques zones mal connues ou en silos.", score: 75 },
+      { label: "Connaissance inégale selon les équipes, dépendances peu formalisées.", score: 50 },
+      { label: "Connaissance fragmentée, une seule personne maîtrise certaines parties critiques.", score: 25 },
+      { label: "Architecture non documentée, connaissance détenue par un seul expert.", score: 0 }
+    ]
+  },
+  {
+    axe: "Batchs & automatisations",
+    question: "Comment sont supervisés vos traitements automatisés (batchs, scripts, ETL) ?",
+    options: [
+      { label: "Batchs monitorés, alertes en cas d'échec, logs centralisés et relus.", score: 100 },
+      { label: "Supervision partielle, alertes sur les batchs les plus critiques uniquement.", score: 75 },
+      { label: "Supervision manuelle, vérification périodique sans alerting automatique.", score: 50 },
+      { label: "Peu de supervision, les échecs sont découverts par les métiers.", score: 25 },
+      { label: "Aucune supervision, batchs en boîte noire, pannes silencieuses fréquentes.", score: 0 }
+    ]
+  },
+  {
+    axe: "Dépendances applicatives",
+    question: "Quel est le niveau de maîtrise de vos dépendances inter-applicatives ?",
+    options: [
+      { label: "Cartographie complète des dépendances, impacts connus, tests d'intégration.", score: 100 },
+      { label: "Cartographie partielle, dépendances principales identifiées.", score: 75 },
+      { label: "Connaissance empirique des dépendances, peu formalisée.", score: 50 },
+      { label: "Dépendances peu connues, découvertes lors des incidents.", score: 25 },
+      { label: "Aucune cartographie, dépendances inconnues, coupures en cascade fréquentes.", score: 0 }
+    ]
+  },
+  {
+    axe: "Résolution d'incidents",
+    question: "Comment se déroule la résolution d'un incident critique ?",
+    options: [
+      { label: "Procédures documentées, war-room organisée, communication structurée, RETEX.", score: 100 },
+      { label: "Processus en place mais application variable selon les équipes.", score: 75 },
+      { label: "Résolution informelle, efficace sur les cas connus, difficile sur l'inconnu.", score: 50 },
+      { label: "Résolution désorganisée, dépendante d'un expert unique, longue et stressante.", score: 25 },
+      { label: "Aucune procédure, chaque incident est une crise improvisée.", score: 0 }
+    ]
+  }
+];
+
+// ═══════════════════════════════════════════════════════════════════
+//  RECOMMENDATIONS
+//  Score 100 → null (rien affiché)
+//  Scores 75 / 50 / 25 / 0 → 2 recommandations uniques et opérationnelles
+//  Total : 12 axes × 4 niveaux × 2 recos = 96 recommandations
+// ═══════════════════════════════════════════════════════════════════
+const RECOMMENDATIONS = {
+
+  "Dépendance humaine": {
+    100: null,
+    75: [
+      "Identifier précisément les modules encore portés par un expert unique et les intégrer en priorité dans le plan de formation de l'équipe.",
+      "Formaliser un calendrier de transfert de connaissances avec des livrables mesurables et une date cible pour chaque compétence critique identifiée."
+    ],
+    50: [
+      "Lancer un programme de documentation des modules sensibles et nommer un binôme responsable par domaine pour assurer la continuité en cas d'absence.",
+      "Mettre en place des sessions de co-pilotage régulières où l'expert travaille en tandem avec un autre membre, afin d'accélérer la montée en compétence collective."
+    ],
+    25: [
+      "Cartographier immédiatement toutes les dépendances humaines critiques, évaluer le risque d'absence pour chacune et constituer une liste de priorités d'action.",
+      "Engager un plan de succession formalisé sous 30 jours maximum pour chaque compétence sans doublure, avec validation par le responsable RUN."
+    ],
+    0: [
+      "Organiser en urgence des séances de documentation intensive avec l'expert unique sur les systèmes les plus critiques, avant toute absence non planifiée.",
+      "Constituer immédiatement des binômes opérationnels pour chaque compétence orpheline, et prévoir des formations accélérées pour les remplaçants désignés."
+    ]
+  },
+
+  "Documentation": {
+    100: null,
+    75: [
+      "Auditer les modules signalés comme partiellement documentés et planifier leur mise à jour dans le backlog technique avec une échéance définie.",
+      "Intégrer une vérification systématique de la documentation dans le processus de validation de chaque livraison, sous forme de critère de sortie obligatoire."
+    ],
+    50: [
+      "Concentrer l'effort documentaire sur les composants critiques en production et désigner un propriétaire de documentation par périmètre fonctionnel.",
+      "Centraliser l'ensemble de la documentation dans un outil unique accessible à toute l'équipe — Confluence, Notion ou SharePoint — et archiver les doublons."
+    ],
+    25: [
+      "Déclencher un chantier de documentation d'urgence sur les processus les plus exposés, avec un pilote nommé, un périmètre délimité et un délai ferme.",
+      "Inscrire du temps dédié à la documentation dans chaque sprint, non négociable, à hauteur minimale d'une demi-journée par itération."
+    ],
+    0: [
+      "Réaliser immédiatement un inventaire de l'existant pour cartographier ce qui n'est pas documenté et établir une liste de priorités absolues avant tout autre chantier.",
+      "Nommer un responsable documentation avec autorité formelle et fixer un objectif de couverture minimale des composants critiques à atteindre sous 60 jours."
+    ]
+  },
+
+  "Incidents récurrents": {
+    100: null,
+    75: [
+      "Mettre en place un tableau de bord de suivi des incidents récurrents pour détecter les tendances émergentes avant qu'elles ne deviennent structurelles.",
+      "Renforcer la rigueur de clôture des tickets : aucun incident récurrent ne peut être fermé sans confirmation écrite que le correctif a été appliqué et vérifié."
+    ],
+    50: [
+      "Instaurer une revue mensuelle dédiée aux incidents récurrents avec identification obligatoire des causes racines et rédaction d'un plan d'action daté.",
+      "Distinguer formellement les contournements temporaires des corrections définitives, et planifier ces dernières en backlog de stabilisation avec une priorité élevée."
+    ],
+    25: [
+      "Inventorier et classer tous les incidents récurrents ouverts par impact métier afin de définir un ordre de traitement structuré et documenté.",
+      "Affecter un responsable désigné à chaque famille d'incident récurrent, avec un engagement de résolution durable présenté en comité RUN sous 2 semaines."
+    ],
+    0: [
+      "Dédier immédiatement une ressource ou des créneaux bloqués à l'analyse des causes racines des incidents les plus fréquents, pour sortir du traitement réactif en boucle.",
+      "Formaliser des procédures de résolution pour les pannes les plus courantes et les rendre accessibles à toute l'équipe, y compris en situation de stress opérationnel."
+    ]
+  },
+
+  "Monitoring": {
+    100: null,
+    75: [
+      "Recenser précisément les composants sans couverture de supervision et planifier leur intégration dans la plateforme de monitoring existante sous 90 jours.",
+      "Mettre en place des tests réguliers des alertes actives en simulant des défaillances contrôlées pour vérifier que les notifications atteignent bien les bonnes personnes."
+    ],
+    50: [
+      "Étendre la supervision en priorité aux services critiques exposés aux utilisateurs, en commençant par ceux générant le plus d'incidents non détectés à temps.",
+      "Unifier toutes les alertes dans une plateforme centralisée — Datadog, Grafana, Zabbix ou équivalent — pour éliminer les angles morts liés à la dispersion des outils."
+    ],
+    25: [
+      "Déployer en urgence un monitoring minimal sur les composants critiques avec des alertes actives vers les équipes d'astreinte, même sans outil sophistiqué.",
+      "Réviser les seuils d'alerte existants pour réduire drastiquement les faux positifs qui poussent les équipes à ignorer les notifications et à rater les vrais incidents."
+    ],
+    0: [
+      "Installer immédiatement un outil de supervision de base sur les services les plus critiques : ne plus dépendre des retours utilisateurs pour détecter les pannes.",
+      "Identifier les 5 indicateurs de santé les plus importants du SI et y associer des alertes opérationnelles fonctionnelles dans un délai maximum de deux semaines."
+    ]
+  },
+
+  "Gestion des changements": {
+    100: null,
+    75: [
+      "Analyser les équipes ou contextes qui contournent le processus de changement pour en comprendre les raisons réelles et adapter les règles en conséquence.",
+      "Intégrer une formation obligatoire au processus de gestion des changements dans le parcours d'onboarding de tout nouveau membre de l'équipe technique."
+    ],
+    50: [
+      "Rédiger et diffuser un processus de changement clair, illustré d'exemples concrets couvrant les cas les plus fréquents rencontrés en production.",
+      "Créer un comité de validation des changements (CAB) se réunissant a minima mensuellement pour examiner et approuver les modifications à fort impact."
+    ],
+    25: [
+      "Interdire immédiatement tout changement en production sans validation préalable d'au moins deux personnes, y compris dans les situations d'urgence déclarées.",
+      "Ouvrir un registre de changements (change log) pour tracer de façon exhaustive toutes les modifications apportées en production à compter de maintenant."
+    ],
+    0: [
+      "Imposer une règle absolue dès aujourd'hui : aucun changement en production sans validation écrite préalable, quelle que soit la pression ou l'urgence invoquée.",
+      "Former l'équipe en urgence aux principes fondamentaux ITIL de gestion des changements et nommer un Change Manager responsable de l'application des règles."
+    ]
+  },
+
+  "Gouvernance RUN": {
+    100: null,
+    75: [
+      "Régulariser le rythme des réunions de pilotage RUN et instaurer un compte-rendu systématique diffusé à toutes les parties prenantes après chaque séance.",
+      "Réviser les indicateurs de suivi existants pour vérifier qu'ils reflètent fidèlement la santé opérationnelle réelle du système, et non uniquement les incidents visibles."
+    ],
+    50: [
+      "Instaurer un comité RUN hebdomadaire avec un ordre du jour fixe structuré autour de quatre rubriques : incidents, changements, risques et capacité.",
+      "Désigner formellement un responsable RUN avec un périmètre d'action délimité, des responsabilités explicites et un pouvoir de décision reconnu par la direction."
+    ],
+    25: [
+      "Créer immédiatement un tableau de bord RUN minimal avec au moins cinq indicateurs clés actualisés chaque semaine et présentés en réunion opérationnelle.",
+      "Planifier une première réunion de gouvernance mensuelle comme point de départ concret, avant de progresser vers un rythme hebdomadaire dans les 60 jours."
+    ],
+    0: [
+      "Identifier et formaliser en urgence qui est responsable du RUN, avec un périmètre d'action défini, un mandat décisionnel écrit et une communication aux équipes.",
+      "Conduire un audit express du RUN en une semaine pour établir un état des lieux minimal et poser les toutes premières bases d'un pilotage opérationnel viable."
+    ]
+  },
+
+  "Mises en production": {
+    100: null,
+    75: [
+      "Investiguer systématiquement les cas où le processus MEP est contourné et traiter les causes sous-jacentes : délais, pression, outillage insuffisant ou manque de confiance.",
+      "Automatiser les tests de régression sur les parcours fonctionnels critiques pour réduire le temps de validation manuelle et sécuriser chaque déploiement."
+    ],
+    50: [
+      "Mettre en place un environnement de pré-production stable et représentatif de la production pour valider chaque release avant tout déploiement en environnement réel.",
+      "Rédiger une procédure de rollback testée et accessible à toute l'équipe, utilisable sans intervention d'un expert en cas d'incident post-déploiement."
+    ],
+    25: [
+      "Interdire immédiatement toute mise en production sans passage préalable dans un environnement de test, même simplifié ou partiel, sans exception.",
+      "Documenter et tester une procédure de rollback d'urgence, puis former toute l'équipe à son exécution lors d'une session pratique dédiée."
+    ],
+    0: [
+      "Décréter un gel temporaire des déploiements directs en production et structurer un processus minimal de validation en moins de cinq jours ouvrés.",
+      "Créer d'urgence un environnement de test minimal — même partiel — pour rompre avec les mises en production en aveugle qui génèrent des incidents récurrents."
+    ]
+  },
+
+  "Continuité opérationnelle": {
+    100: null,
+    75: [
+      "Planifier un exercice de test grandeur nature du PCA dans les six prochains mois et documenter les écarts identifiés avec un plan de correction associé.",
+      "Vérifier que chaque membre de l'équipe opérationnelle connaît précisément son rôle et ses actions dans le plan de continuité lors d'une activation réelle."
+    ],
+    50: [
+      "Mesurer et documenter les RTO et RPO actuels pour chaque service critique afin de vérifier leur alignement avec les exigences et engagements métiers.",
+      "Tester les procédures de reprise sur au moins deux scénarios de panne distincts dans l'année, en conditions aussi réalistes que possible."
+    ],
+    25: [
+      "Rédiger un PCA minimal couvrant les trois scénarios de panne les plus probables, avec des actions de reprise précises, assignées et validées par les équipes.",
+      "Tester la restauration des sauvegardes des données critiques de façon concrète : sans cette vérification, la continuité repose sur une hypothèse non validée."
+    ],
+    0: [
+      "Lancer immédiatement un chantier PCA avec un responsable désigné, centré sur les risques d'interruption les plus graves et les plus probables à court terme.",
+      "Vérifier en urgence que des sauvegardes récentes existent bien et qu'elles sont réellement restaurables : c'est le minimum absolu de toute continuité opérationnelle."
+    ]
+  },
+
+  "Connaissance du système": {
+    100: null,
+    75: [
+      "Identifier avec précision les zones grises ou mal connues du SI et organiser des sessions de transfert ciblées sur ces périmètres avec les équipes concernées.",
+      "Mettre en place un wiki technique structuré, maintenu activement, pour centraliser et partager la connaissance collective de l'architecture et des systèmes."
+    ],
+    50: [
+      "Organiser un atelier de cartographie du SI impliquant toutes les équipes concernées pour reconstruire une vision partagée, cohérente et à jour de l'architecture.",
+      "Identifier tous les composants sans documentation ni expert clairement identifié et les placer systématiquement en tête des priorités de la roadmap technique."
+    ],
+    25: [
+      "Mettre en place des sessions régulières de partage de connaissances entre l'expert unique et au moins deux autres membres de l'équipe sur les domaines les plus sensibles.",
+      "Produire une cartographie minimale des flux et dépendances critiques — même imparfaite — pour éviter d'agir en aveugle lors du prochain incident majeur."
+    ],
+    0: [
+      "Initier immédiatement un programme structuré de documentation et de transmission avec l'expert unique, supervisé chaque semaine par le responsable RUN.",
+      "Solliciter en urgence un architecte ou un prestataire externe pour produire une cartographie minimale des composants les plus critiques du système d'information."
+    ]
+  },
+
+  "Batchs & automatisations": {
+    100: null,
+    75: [
+      "Étendre la supervision aux batchs secondaires non encore couverts et valider avec les équipes métiers que les alertes actuelles correspondent bien à leurs besoins réels.",
+      "Documenter les dépendances entre batchs — séquencement, données partagées, fenêtres d'exécution — pour anticiper les effets de cascade en cas d'échec partiel."
+    ],
+    50: [
+      "Déployer un monitoring centralisé des batchs avec alertes automatiques sur les échecs et les dépassements de durée d'exécution au-delà d'un seuil défini.",
+      "Documenter chaque traitement automatisé critique : fréquence, volumétrie, dépendances amont/aval, procédure de relance manuelle et responsable désigné."
+    ],
+    25: [
+      "Identifier tous les batchs critiques sans supervision active et y associer en urgence des alertes minimales — e-mail ou SMS — sur les échecs d'exécution.",
+      "Mettre en place un journal d'exécution centralisé pour tracer l'état de chaque traitement automatisé et constituer un historique exploitable lors des diagnostics."
+    ],
+    0: [
+      "Inventorier immédiatement l'ensemble des batchs et automatisations existants : beaucoup sont probablement non documentés, non supervisés et inconnus de l'équipe.",
+      "Déployer d'urgence une solution de surveillance minimale sur les traitements les plus critiques — même un simple script de contrôle avec alerte — pour éviter les pannes silencieuses."
+    ]
+  },
+
+  "Dépendances applicatives": {
+    100: null,
+    75: [
+      "Compléter la cartographie des dépendances sur les zones encore non couvertes et la valider formellement avec chaque équipe applicative responsable.",
+      "Mettre en place des tests de contrat inter-applicatifs pour sécuriser les interfaces critiques et détecter les régressions d'intégration dès les phases de recette."
+    ],
+    50: [
+      "Formaliser la cartographie des dépendances applicatives dans un référentiel centralisé — CMDB ou document partagé — et en assigner la maintenance à un responsable.",
+      "Définir des stratégies de fallback pour les dépendances critiques afin de limiter l'impact sur les utilisateurs finaux en cas de défaillance d'un composant tiers."
+    ],
+    25: [
+      "Organiser un atelier de cartographie des dépendances applicatives avec toutes les équipes impliquées pour identifier les risques de coupure en cascade avant le prochain incident.",
+      "Mettre en oeuvre des mécanismes de circuit breaker sur les interfaces les plus critiques pour isoler les pannes d'un composant et éviter leur propagation en cascade."
+    ],
+    0: [
+      "Réaliser en urgence un inventaire des flux inter-applicatifs principaux pour identifier les dépendances inconnues avant qu'elles ne causent le prochain incident majeur.",
+      "Former les équipes à la gestion des coupures de dépendances et établir une procédure de communication inter-équipes activable immédiatement lors d'un incident critique."
+    ]
+  },
+
+  "Résolution d'incidents": {
+    100: null,
+    75: [
+      "Harmoniser les pratiques de résolution entre équipes en rédigeant un playbook commun par type d'incident rencontré, et le tester lors d'une simulation.",
+      "Étendre les procédures documentées aux incidents moins fréquents mais à fort impact potentiel, en priorisant ceux qui ont causé les perturbations les plus longues."
+    ],
+    50: [
+      "Rédiger un playbook de résolution pour les cinq pannes les plus courantes et le rendre accessible à toute l'équipe via un canal dédié, même en conditions dégradées.",
+      "Organiser une simulation de crise (war-room game) en conditions contrôlées pour entraîner l'équipe à coordonner sa réponse et à communiquer efficacement sous pression."
+    ],
+    25: [
+      "Documenter immédiatement les étapes de résolution des incidents les plus fréquents pour réduire la dépendance à un expert unique lors de chaque crise.",
+      "Formaliser et diffuser une chaîne d'escalade claire précisant qui contacter, dans quel délai, selon quel canal et avec quelles informations à communiquer."
+    ],
+    0: [
+      "Mettre en place en urgence une procédure minimale de gestion de crise couvrant les quatre piliers fondamentaux : rôles, communication, escalade et traçabilité.",
+      "Former l'ensemble de l'équipe à la conduite d'une war-room structurée pour sortir définitivement de l'improvisation collective lors des incidents critiques."
+    ]
+  }
+};
+
+// ═══════════════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════════════
+let step = 'intro';
+let currentQ = 0;
+let answers = new Array(12).fill(null);
+
+// ═══════════════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════════════
+function getRecos(axe, score) {
+  // Score 100 → aucune recommandation, toujours
+  if (score === 100) return null;
+  const axeData = RECOMMENDATIONS[axe];
+  if (!axeData) return null;
+  // Correspondance exacte : chaque score (75/50/25/0) a sa propre clé
+  const recos = axeData[score];
+  if (!recos || !Array.isArray(recos) || recos.length < 2) return null;
+  return recos;
+}
+
+function getScore() {
+  const s = answers.map((a, i) => a !== null ? QUESTIONS[i].options[a].score : 50);
+  return Math.round(s.reduce((acc, v) => acc + v, 0) / QUESTIONS.length);
+}
+
+function getAxisScores() {
+  return answers.map((a, i) => ({
+    axe: QUESTIONS[i].axe,
+    score: a !== null ? QUESTIONS[i].options[a].score : 50
+  }));
+}
+
+function getCritInfo(score) {
+  if (score >= 80) return { label: 'Maîtrisé',  color: '#4af0c8', bg: 'rgba(74,240,200,0.1)' };
+  if (score >= 60) return { label: 'Correct',   color: '#e8f04a', bg: 'rgba(232,240,74,0.1)' };
+  if (score >= 40) return { label: 'Fragile',   color: '#f0a84a', bg: 'rgba(240,168,74,0.1)' };
+  if (score >= 20) return { label: 'Risqué',    color: '#f06a4a', bg: 'rgba(240,106,74,0.1)' };
+  return              { label: 'Critique',  color: '#f04a4a', bg: 'rgba(240,74,74,0.1)' };
+}
+
+function barColor(s) {
+  if (s >= 75) return '#4af0c8';
+  if (s >= 50) return '#e8f04a';
+  if (s >= 25) return '#f0a84a';
+  return '#f04a4a';
+}
+
+function rgbColor(s) {
+  if (s >= 75) return [74,240,200];
+  if (s >= 50) return [232,240,74];
+  if (s >= 25) return [240,168,74];
+  return [240,74,74];
+}
+
+function hexRGB(hex) {
+  return [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+}
+
+function interpretation(score) {
+  if (score >= 80) return "Votre production est bien maitrisee. Maintenez la vigilance et investissez en amelioration continue.";
+  if (score >= 60) return "Des fragilites existent. Un plan d'actions cible permettra de securiser durablement votre RUN.";
+  if (score >= 40) return "Votre RUN presente des risques significatifs. Une demarche de stabilisation est recommandee rapidement.";
+  if (score >= 20) return "Situation preoccupante. Des actions urgentes sont necessaires sur plusieurs axes critiques.";
+  return "Situation critique. Un plan de remediation RUN doit etre engage immediatement avec un accompagnement expert.";
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  RENDER
+// ═══════════════════════════════════════════════════════════════════
+function render() {
+  const app = document.getElementById('app');
+  if (step === 'intro')        app.innerHTML = renderIntro();
+  else if (step === 'quiz')    app.innerHTML = renderQuiz();
+  else                         app.innerHTML = renderResults();
+  attachEvents();
+}
+
+function renderIntro() {
+  return `
+  <div class="intro-card">
+    <span class="intro-icon">🔬</span>
+    <h2 class="intro-title">Diagnostic RUN Risk</h2>
+    <p class="intro-desc">12 questions pour évaluer les fragilités de votre production.<br/>
+    Obtenez un score, identifiez les axes à risque et générez un rapport PDF prêt à partager.</p>
+    <div class="specs">
+      <div class="spec"><span class="spec-val">12</span><span class="spec-label">Questions</span></div>
+      <div class="spec"><span class="spec-val">3'</span><span class="spec-label">Durée</span></div>
+      <div class="spec"><span class="spec-val">PDF</span><span class="spec-label">Rapport</span></div>
+    </div>
+    <button class="btn btn-primary" id="startBtn">Commencer le diagnostic →</button>
+  </div>`;
+}
+
+function renderQuiz() {
+  const q = QUESTIONS[currentQ];
+  const pct = Math.round((currentQ / QUESTIONS.length) * 100);
+  const dotMap = { 100:'d100', 75:'d75', 50:'d50', 25:'d25', 0:'d0' };
+  return `
+  <div class="progress-bar-wrap">
+    <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
+    <span class="progress-label">${currentQ + 1} / ${QUESTIONS.length}</span>
+  </div>
+  <div class="question-card">
+    <div class="axe-tag">${q.axe}</div>
+    <div class="question-num">Question ${currentQ + 1}</div>
+    <div class="question-text">${q.question}</div>
+    <div class="options">
+      ${q.options.map((opt, i) => `
+        <button class="option ${answers[currentQ] === i ? 'selected' : ''}" data-i="${i}">
+          <span class="score-dot ${dotMap[opt.score]}"></span>
+          <span class="option-label">${opt.label}</span>
+          <span class="score-badge">${opt.score} pts</span>
+        </button>`).join('')}
+    </div>
+  </div>
+  <div class="nav">
+    <button class="btn btn-ghost" id="prevBtn" ${currentQ === 0 ? 'style="visibility:hidden"' : ''}>← Précédent</button>
+    <button class="btn btn-primary" id="nextBtn" ${answers[currentQ] === null ? 'disabled' : ''}>
+      ${currentQ === QUESTIONS.length - 1 ? 'Voir les résultats →' : 'Suivant →'}
+    </button>
+  </div>`;
+}
+
+function renderResults() {
+  const score = getScore();
+  const crit = getCritInfo(score);
+  const axisScores = getAxisScores();
+
+  // Trier par score croissant : les axes les plus fragiles en premier
+  const sorted = [...axisScores].sort((a, b) => a.score - b.score);
+  const hasAnyReco = sorted.some(a => a.score < 100);
+
+  return `
+  <div class="results">
+    <div class="score-hero">
+      <div class="score-label">RUN RISK SCORE</div>
+      <div class="score-number">${score}<span class="denom">/100</span></div>
+      <span class="criticality-badge" style="color:${crit.color};background:${crit.bg};border:1px solid ${crit.color}44">
+        ● ${crit.label}
+      </span>
+      <p class="disclaimer">Ce diagnostic est une estimation rapide basée sur vos réponses et ne remplace pas un audit complet.</p>
+    </div>
+
+    <div class="radar-section">
+      <div class="section-title">Score par axe</div>
+      <div class="radar-wrap"><canvas id="radarCanvas" width="320" height="320"></canvas></div>
+      <div class="axes-grid">
+        ${axisScores.map(a => `
+          <div class="axe-bar-item">
+            <div class="axe-bar-header">
+              <span class="axe-name">${a.axe}</span>
+              <span class="axe-score-val" style="color:${barColor(a.score)}">${a.score}</span>
+            </div>
+            <div class="bar-track">
+              <div class="bar-fill" style="width:${a.score}%;background:${barColor(a.score)}"></div>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>
+
+    <div class="weaknesses">
+      <div class="section-title">Recommandations — 12 axes évalués</div>
+      ${!hasAnyReco
+        ? `<div class="all-mastered">✦ Tous les axes sont maîtrisés — aucune recommandation à formuler.</div>`
+        : sorted.map((a, rank) => {
+            const recos = getRecos(a.axe, a.score);
+            const col = barColor(a.score);
+            if (!recos) {
+              // Score 100 : axe maîtrisé
+              return `
+              <div class="weakness-item weakness-mastered">
+                <div class="weakness-rank" style="color:var(--border)">${String(rank+1).padStart(2,'0')}</div>
+                <div class="weakness-content">
+                  <div class="weakness-axe" style="color:var(--accent2)">✓ ${a.axe}</div>
+                  <div class="weakness-score-tag">Score : ${a.score} / 100 — Axe maîtrisé, aucune action requise.</div>
+                </div>
+              </div>`;
+            }
+            return `
+            <div class="weakness-item">
+              <div class="weakness-rank" style="color:${col}">${String(rank+1).padStart(2,'0')}</div>
+              <div class="weakness-content">
+                <div class="weakness-axe" style="color:${col}">⚠ ${a.axe}</div>
+                <div class="weakness-score-tag">Score : ${a.score} / 100</div>
+                ${recos.map(r => `<div class="weakness-reco">${r}</div>`).join('')}
+              </div>
+            </div>`;
+          }).join('')
+      }
+    </div>
+
+    <div class="results-nav">
+      <button class="btn btn-primary" id="pdfBtn">📄 Télécharger le rapport PDF</button>
+      <button class="btn btn-ghost" id="restartBtn">↺ Recommencer</button>
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  EVENTS
+// ═══════════════════════════════════════════════════════════════════
+function attachEvents() {
+  const s = document.getElementById('startBtn');
+  if (s) s.onclick = () => { step='quiz'; currentQ=0; render(); };
+
+  const p = document.getElementById('prevBtn');
+  if (p) p.onclick = () => { currentQ--; render(); };
+
+  const n = document.getElementById('nextBtn');
+  if (n) n.onclick = () => {
+    if (currentQ < QUESTIONS.length-1) { currentQ++; render(); }
+    else { step='results'; render(); drawRadar(); }
+  };
+
+  document.querySelectorAll('.option').forEach(btn => {
+    btn.onclick = () => { answers[currentQ] = parseInt(btn.dataset.i); render(); };
+  });
+
+  const pdf = document.getElementById('pdfBtn');
+  if (pdf) pdf.onclick = generatePDF;
+
+  const rst = document.getElementById('restartBtn');
+  if (rst) rst.onclick = () => { answers=new Array(12).fill(null); currentQ=0; step='intro'; render(); };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  RADAR CANVAS
+// ═══════════════════════════════════════════════════════════════════
+function drawRadar() {
+  const canvas = document.getElementById('radarCanvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const W=320, H=320, cx=W/2, cy=H/2, R=120, N=QUESTIONS.length;
+  const axisScores = getAxisScores();
+  ctx.clearRect(0,0,W,H);
+
+  // Rings
+  for (let r=1; r<=4; r++) {
+    ctx.beginPath();
+    for (let i=0; i<N; i++) {
+      const a=(2*Math.PI*i/N)-Math.PI/2;
+      i===0 ? ctx.moveTo(cx+R*(r/4)*Math.cos(a), cy+R*(r/4)*Math.sin(a))
+             : ctx.lineTo(cx+R*(r/4)*Math.cos(a), cy+R*(r/4)*Math.sin(a));
+    }
+    ctx.closePath(); ctx.strokeStyle='rgba(30,42,58,0.8)'; ctx.lineWidth=1; ctx.stroke();
+  }
+  // Spokes
+  for (let i=0; i<N; i++) {
+    const a=(2*Math.PI*i/N)-Math.PI/2;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+R*Math.cos(a), cy+R*Math.sin(a));
+    ctx.strokeStyle='rgba(30,42,58,0.6)'; ctx.lineWidth=1; ctx.stroke();
+  }
+  // Data
+  ctx.beginPath();
+  axisScores.forEach((s,i) => {
+    const a=(2*Math.PI*i/N)-Math.PI/2, v=s.score/100;
+    i===0 ? ctx.moveTo(cx+R*v*Math.cos(a), cy+R*v*Math.sin(a))
+           : ctx.lineTo(cx+R*v*Math.cos(a), cy+R*v*Math.sin(a));
+  });
+  ctx.closePath(); ctx.fillStyle='rgba(232,240,74,0.12)'; ctx.fill();
+  ctx.strokeStyle='#e8f04a'; ctx.lineWidth=2; ctx.stroke();
+  // Dots
+  axisScores.forEach((s,i) => {
+    const a=(2*Math.PI*i/N)-Math.PI/2, v=s.score/100;
+    ctx.beginPath(); ctx.arc(cx+R*v*Math.cos(a), cy+R*v*Math.sin(a), 4,0,2*Math.PI);
+    ctx.fillStyle='#e8f04a'; ctx.fill();
+  });
+  // Labels
+  ctx.font='9px DM Mono, monospace'; ctx.fillStyle='#6b7f9a'; ctx.textAlign='center';
+  axisScores.forEach((s,i) => {
+    const a=(2*Math.PI*i/N)-Math.PI/2;
+    ctx.fillText(s.axe.split(' ').slice(-1)[0], cx+(R+18)*Math.cos(a), cy+(R+18)*Math.sin(a)+3);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+//  PDF GENERATION
+// ═══════════════════════════════════════════════════════════════════
+async function generatePDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const W=210, H=297;
+  const score = getScore();
+  const crit = getCritInfo(score);
+  const axisScores = getAxisScores();
+  const today = new Date().toLocaleDateString('fr-FR', { day:'2-digit', month:'long', year:'numeric' });
+
+  // ── PAGE 1 : Score global + scores par axe ──────────────────────
+  doc.setFillColor(10,12,15); doc.rect(0,0,W,H,'F');
+  doc.setFillColor(18,22,28); doc.rect(0,0,W,60,'F');
+  doc.setFillColor(232,240,74); doc.rect(0,0,4,60,'F');
+
+  doc.setTextColor(232,240,74); doc.setFontSize(9); doc.setFont('helvetica','normal');
+  doc.text('DIAGNOSTIC OPERATIONNEL', 14, 18);
+  doc.setTextColor(232,237,245); doc.setFontSize(32); doc.setFont('helvetica','bold');
+  doc.text('RUN RISK', 14, 38);
+  doc.setTextColor(107,127,154); doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text('Rapport genere le ' + today, 14, 50);
+
+  // Score card
+  doc.setFillColor(18,22,28); doc.roundedRect(14,70,88,58,2,2,'F');
+  doc.setTextColor(107,127,154); doc.setFontSize(8); doc.text('RUN RISK SCORE', 58,83,{align:'center'});
+  doc.setTextColor(232,240,74); doc.setFontSize(50); doc.setFont('helvetica','bold');
+  doc.text(`${score}`, 58,114,{align:'center'});
+  doc.setTextColor(107,127,154); doc.setFontSize(11); doc.text('/ 100', 58,124,{align:'center'});
+
+  // Criticality card
+  const cc = hexRGB(crit.color);
+  doc.setDrawColor(...cc); doc.setFillColor(18,22,28);
+  doc.roundedRect(108,70,88,58,2,2,'FD');
+  doc.setTextColor(...cc); doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text('NIVEAU DE CRITICITE', 152,83,{align:'center'});
+  doc.setFontSize(17); doc.setFont('helvetica','bold');
+  doc.text(crit.label.toUpperCase(), 152,105,{align:'center'});
+  doc.setFontSize(7); doc.setFont('helvetica','normal'); doc.setTextColor(170,185,210);
+  const interpLines = doc.splitTextToSize(interpretation(score), 76);
+  doc.text(interpLines, 152,114,{align:'center'});
+
+  // Axis bars — 2 columns
+  let y = 144;
+  doc.setTextColor(107,127,154); doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.text('SCORES PAR AXE', 14, y); y += 8;
+
+  axisScores.forEach((a, i) => {
+    const col = i < 6 ? 0 : 1;
+    const row = i % 6;
+    const bx = 14 + col * 98;
+    const by = y + row * 14;
+    const sc = rgbColor(a.score);
+
+    doc.setTextColor(175,190,215); doc.setFontSize(7); doc.setFont('helvetica','normal');
+    doc.text(a.axe, bx, by);
+    doc.setTextColor(...sc);
+    doc.text(`${a.score}`, bx+78, by, {align:'right'});
+    doc.setFillColor(26,32,48); doc.rect(bx, by+2, 80, 3, 'F');
+    doc.setFillColor(...sc); doc.rect(bx, by+2, 80*a.score/100, 3, 'F');
+  });
+
+  // ── PAGE 2+ : Recommandations — tous les 12 axes ────────────────
+  doc.addPage();
+  doc.setFillColor(10,12,15); doc.rect(0,0,W,H,'F');
+  doc.setFillColor(18,22,28); doc.rect(0,0,W,40,'F');
+  doc.setFillColor(232,240,74); doc.rect(0,0,4,40,'F');
+
+  doc.setTextColor(232,240,74); doc.setFontSize(9); doc.setFont('helvetica','bold');
+  doc.text('RECOMMANDATIONS PAR AXE', 14, 22);
+  doc.setTextColor(107,127,154); doc.setFontSize(8); doc.setFont('helvetica','normal');
+  doc.text('RUN Risk Diagnostic — ' + today, 14, 32);
+
+  // Trier par score croissant, axes fragiles en premier
+  const sorted = [...axisScores].sort((a, b) => a.score - b.score);
+
+  y = 48;
+  let pageNum = 2;
+
+  function addNewRecoPage() {
+    doc.addPage();
+    pageNum++;
+    doc.setFillColor(10,12,15); doc.rect(0,0,W,H,'F');
+    doc.setFillColor(18,22,28); doc.rect(0,0,W,20,'F');
+    doc.setFillColor(232,240,74); doc.rect(0,0,4,20,'F');
+    doc.setTextColor(107,127,154); doc.setFontSize(7); doc.setFont('helvetica','normal');
+    doc.text('RUN Risk Diagnostic — Recommandations (suite)', 14, 13);
+    y = 28;
+  }
+
+  sorted.forEach((a, rank) => {
+    const recos = getRecos(a.axe, a.score);
+    const c = rgbColor(a.score);
+
+    if (!recos) {
+      // Axe maîtrisé — carte compacte
+      const cardH = 18;
+      if (y + cardH > H - 16) addNewRecoPage();
+
+      doc.setFillColor(14,18,24); doc.roundedRect(14, y, W-28, cardH, 2,2,'F');
+      doc.setFillColor(74,240,200); doc.rect(14, y, 3, cardH, 'F');
+      doc.setTextColor(74,240,200); doc.setFontSize(7.5); doc.setFont('helvetica','bold');
+      doc.text(`${String(rank+1).padStart(2,'0')}  ${a.axe.toUpperCase()}`, 22, y+7);
+      doc.setTextColor(107,127,154); doc.setFontSize(7); doc.setFont('helvetica','normal');
+      doc.text('Score : ' + a.score + '/100 — Axe maitrise, aucune action requise.', 22, y+13);
+      y += cardH + 4;
+
+    } else {
+      // Axe avec recommandations
+      const r1w = doc.splitTextToSize('- ' + recos[0], 162);
+      const r2w = doc.splitTextToSize('- ' + recos[1], 162);
+      const cardH = 10 + 7 + r1w.length*4.0 + 3 + r2w.length*4.0 + 6;
+
+      if (y + cardH > H - 16) addNewRecoPage();
+
+      doc.setFillColor(18,22,28); doc.roundedRect(14, y, W-28, cardH, 2,2,'F');
+      doc.setFillColor(...c); doc.rect(14, y, 3, cardH, 'F');
+
+      doc.setTextColor(...c); doc.setFontSize(8); doc.setFont('helvetica','bold');
+      doc.text(`${String(rank+1).padStart(2,'0')}  ${a.axe.toUpperCase()}`, 22, y+9);
+      doc.setTextColor(107,127,154); doc.setFontSize(7); doc.setFont('helvetica','normal');
+      doc.text('Score : ' + a.score + '/100', 22, y+16);
+
+      doc.setTextColor(195,210,230); doc.setFontSize(7.2);
+      let ry = y + 23;
+      doc.text(r1w, 22, ry); ry += r1w.length * 4.0 + 3;
+      doc.text(r2w, 22, ry);
+
+      y += cardH + 4;
+    }
+  });
+
+  // Bloc prochaines étapes
+  const footH = 40;
+  if (y + footH > H - 16) addNewRecoPage();
+  const footY = y + 4;
+  doc.setFillColor(18,22,28); doc.roundedRect(14, footY, W-28, footH, 2,2,'F');
+  doc.setFillColor(74,240,200); doc.rect(14, footY, 3, footH, 'F');
+  doc.setTextColor(74,240,200); doc.setFontSize(8); doc.setFont('helvetica','bold');
+  doc.text('PROCHAINES ETAPES', 22, footY+10);
+  doc.setTextColor(180,195,220); doc.setFontSize(7.5); doc.setFont('helvetica','normal');
+  [
+    '-> Partager ce rapport a votre DSI ou responsable infrastructure',
+    '-> Prioriser les 2 axes au score le plus bas pour une action immediate',
+    '-> Planifier un atelier de stabilisation RUN avec vos equipes',
+    '-> Mettre en place un suivi mensuel du score RUN Risk'
+  ].forEach((s, i) => doc.text(s, 22, footY + 19 + i*5.5));
+
+  // Disclaimer
+  const disclaimerY = footY + footH + 6;
+  if (disclaimerY + 8 < H - 6) {
+    doc.setTextColor(55,70,95); doc.setFontSize(6.5); doc.setFont('helvetica','italic');
+    doc.text('Ce diagnostic est une estimation rapide basee sur vos reponses et ne remplace pas un audit complet.', W/2, disclaimerY, {align:'center'});
+  }
+
+  // Numéros de page sur toutes les pages
+  const totalPages = doc.getNumberOfPages();
+  for (let p = 1; p <= totalPages; p++) {
+    doc.setPage(p);
+    doc.setTextColor(45,58,78); doc.setFontSize(7);
+    doc.text(`RUN Risk Diagnostic — Confidentiel — Page ${p}/${totalPages}`, W/2, H-5, {align:'center'});
+  }
+
+  doc.save('RUN_Risk_Rapport.pdf');
+}
+
+// ── INIT ──
+render();
+</script>
+</body>
+</html>
